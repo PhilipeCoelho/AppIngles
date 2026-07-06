@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { Header } from "@/components/Header";
 
 interface WordRow {
   id: number;
@@ -17,22 +17,27 @@ export default function Home() {
   const [term, setTerm] = useState("");
   const [translation, setTranslation] = useState("");
   const [loading, setLoading] = useState(false);
-  const [dueCount, setDueCount] = useState(0);
+  const [loaded, setLoaded] = useState(false);
 
   async function loadWords() {
     const res = await fetch("/api/words");
     const data = await res.json();
     setWords(data.words);
-    const now = Date.now();
-    setDueCount(
-      data.words.filter((w: WordRow) => new Date(w.due_at + "Z").getTime() <= now)
-        .length
-    );
+    setLoaded(true);
   }
 
   useEffect(() => {
     loadWords();
   }, []);
+
+  const { dueCount, learnedCount } = useMemo(() => {
+    const now = Date.now();
+    return {
+      dueCount: words.filter((w) => new Date(w.due_at + "Z").getTime() <= now)
+        .length,
+      learnedCount: words.filter((w) => w.repetitions >= 3).length,
+    };
+  }, [words]);
 
   async function addWord(e: React.FormEvent) {
     e.preventDefault();
@@ -50,75 +55,137 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black font-sans">
-      <main className="mx-auto max-w-2xl px-6 py-12">
-        <h1 className="text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
-          AppInglês
-        </h1>
-        <p className="mt-2 text-zinc-600 dark:text-zinc-400">
-          Cadastre palavras novas do seu curso de inglês. O sistema traz elas
-          de volta, dentro de frases diferentes, no tempo certo da sua curva
-          de aprendizado, para você não esquecer.
-        </p>
+    <div className="flex min-h-screen flex-col font-sans">
+      <Header active="home" />
 
-        <Link
-          href="/review"
-          className="mt-6 inline-flex items-center gap-2 rounded-full bg-black dark:bg-white text-white dark:text-black px-5 py-3 font-medium hover:opacity-90"
-        >
-          Revisar agora {dueCount > 0 && `(${dueCount})`}
-        </Link>
+      <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
+        <div className="grid grid-cols-3 gap-3">
+          <StatCard label="Palavras" value={words.length} />
+          <StatCard label="Para revisar" value={dueCount} accent="amber" />
+          <StatCard label="Fixadas" value={learnedCount} accent="emerald" />
+        </div>
+
+        {dueCount > 0 && (
+          <a
+            href="/review"
+            className="mt-5 flex items-center justify-between rounded-2xl bg-indigo-600 px-5 py-4 text-white shadow-sm shadow-indigo-600/20 transition hover:bg-indigo-500"
+          >
+            <span className="font-medium">
+              {dueCount} palavra{dueCount > 1 ? "s" : ""} pronta
+              {dueCount > 1 ? "s" : ""} para revisar agora
+            </span>
+            <span aria-hidden>→</span>
+          </a>
+        )}
 
         <form
           onSubmit={addWord}
-          className="mt-10 flex flex-col gap-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5 bg-white dark:bg-zinc-900"
+          className="mt-8 flex flex-col gap-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-sm"
         >
-          <h2 className="font-medium text-black dark:text-zinc-50">
-            Nova palavra
-          </h2>
-          <input
-            className="rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2 text-black dark:text-zinc-50"
-            placeholder="Palavra em inglês (ex: water)"
-            value={term}
-            onChange={(e) => setTerm(e.target.value)}
-          />
-          <input
-            className="rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2 text-black dark:text-zinc-50"
-            placeholder="Tradução (ex: água)"
-            value={translation}
-            onChange={(e) => setTranslation(e.target.value)}
-          />
+          <div>
+            <h2 className="font-semibold text-neutral-900 dark:text-neutral-50">
+              Adicionar palavra nova
+            </h2>
+            <p className="mt-1 text-sm text-neutral-500">
+              Ela entra na fila e volta em frases diferentes, no tempo certo
+              para você não esquecer.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <input
+              className="flex-1 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent px-3.5 py-2.5 text-neutral-900 dark:text-neutral-50 placeholder:text-neutral-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              placeholder="Palavra em inglês · ex: water"
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+            />
+            <input
+              className="flex-1 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent px-3.5 py-2.5 text-neutral-900 dark:text-neutral-50 placeholder:text-neutral-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              placeholder="Tradução · ex: água"
+              value={translation}
+              onChange={(e) => setTranslation(e.target.value)}
+            />
+          </div>
           <button
             type="submit"
-            disabled={loading}
-            className="self-start rounded-full bg-black dark:bg-white text-white dark:text-black px-5 py-2 font-medium disabled:opacity-50"
+            disabled={loading || !term.trim() || !translation.trim()}
+            className="self-start rounded-full bg-neutral-900 dark:bg-white px-5 py-2.5 text-sm font-medium text-white dark:text-neutral-900 transition hover:opacity-90 disabled:opacity-40"
           >
-            Adicionar
+            {loading ? "Adicionando..." : "Adicionar"}
           </button>
         </form>
 
         <div className="mt-10">
-          <h2 className="font-medium text-black dark:text-zinc-50 mb-3">
-            Suas palavras ({words.length})
+          <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">
+            Suas palavras
           </h2>
+
+          {loaded && words.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-neutral-300 dark:border-neutral-800 px-6 py-10 text-center text-neutral-500">
+              Nenhuma palavra ainda. Adicione a primeira acima para começar.
+            </div>
+          )}
+
           <ul className="flex flex-col gap-2">
-            {words.map((w) => (
-              <li
-                key={w.id}
-                className="flex items-center justify-between rounded-lg border border-zinc-200 dark:border-zinc-800 px-4 py-2 bg-white dark:bg-zinc-900"
-              >
-                <span className="text-black dark:text-zinc-50">
-                  <strong>{w.term}</strong> — {w.translation}
-                </span>
-                <span className="text-xs text-zinc-500">
-                  {w.repetitions === 0
-                    ? "novo"
-                    : `revisado ${w.repetitions}x`}
-                </span>
-              </li>
-            ))}
+            {words.map((w) => {
+              const isDue = new Date(w.due_at + "Z").getTime() <= Date.now();
+              return (
+                <li
+                  key={w.id}
+                  className="flex items-center justify-between rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-3"
+                >
+                  <div>
+                    <span className="font-medium text-neutral-900 dark:text-neutral-50">
+                      {w.term}
+                    </span>
+                    <span className="text-neutral-400"> · </span>
+                    <span className="text-neutral-600 dark:text-neutral-400">
+                      {w.translation}
+                    </span>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${
+                      isDue
+                        ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                        : w.repetitions === 0
+                          ? "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400"
+                          : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                    }`}
+                  >
+                    {isDue
+                      ? "pronta para revisar"
+                      : w.repetitions === 0
+                        ? "nova"
+                        : `revisada ${w.repetitions}x`}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </div>
       </main>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  accent = "neutral",
+}: {
+  label: string;
+  value: number;
+  accent?: "neutral" | "amber" | "emerald";
+}) {
+  const accentClass = {
+    neutral: "text-neutral-900 dark:text-neutral-50",
+    amber: "text-amber-600 dark:text-amber-400",
+    emerald: "text-emerald-600 dark:text-emerald-400",
+  }[accent];
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-3.5">
+      <p className={`text-2xl font-semibold ${accentClass}`}>{value}</p>
+      <p className="mt-0.5 text-xs text-neutral-500">{label}</p>
     </div>
   );
 }
