@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, withSchema } from "@/lib/db";
 
 export async function GET() {
-  const words = db
-    .prepare(
-      `SELECT w.id, w.term, w.translation, w.created_at,
-              c.due_at, c.repetitions, c.interval_days
-       FROM words w
-       JOIN cards c ON c.word_id = w.id
-       ORDER BY w.created_at DESC`
-    )
-    .all();
-  return NextResponse.json({ words });
+  await withSchema();
+  const result = await db.execute(
+    `SELECT w.id, w.term, w.translation, w.created_at,
+            c.due_at, c.repetitions, c.interval_days
+     FROM words w
+     JOIN cards c ON c.word_id = w.id
+     ORDER BY w.created_at DESC`
+  );
+  return NextResponse.json({ words: result.rows });
 }
 
 export async function POST(req: NextRequest) {
+  await withSchema();
   const body = await req.json();
   const term = (body.term ?? "").trim();
   const translation = (body.translation ?? "").trim();
@@ -26,15 +26,19 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const insertWord = db.prepare(
-    "INSERT INTO words (term, translation) VALUES (?, ?)"
+  const insertResult = await db.execute({
+    sql: "INSERT INTO words (term, translation) VALUES (?, ?)",
+    args: [term, translation],
+  });
+  const wordId = insertResult.lastInsertRowid;
+
+  await db.execute({
+    sql: "INSERT INTO cards (word_id, due_at) VALUES (?, datetime('now'))",
+    args: [wordId!],
+  });
+
+  return NextResponse.json(
+    { id: Number(wordId), term, translation },
+    { status: 201 }
   );
-  const result = insertWord.run(term, translation);
-  const wordId = result.lastInsertRowid;
-
-  db.prepare(
-    "INSERT INTO cards (word_id, due_at) VALUES (?, datetime('now'))"
-  ).run(wordId);
-
-  return NextResponse.json({ id: wordId, term, translation }, { status: 201 });
 }
