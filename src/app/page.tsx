@@ -18,12 +18,23 @@ export default function Home() {
   const [translation, setTranslation] = useState("");
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function loadWords() {
-    const res = await fetch("/api/words");
-    const data = await res.json();
-    setWords(data.words);
-    setLoaded(true);
+    try {
+      const res = await fetch("/api/words");
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Erro ao carregar palavras");
+        return;
+      }
+      setError(null);
+      setWords(data.words);
+    } catch {
+      setError("Não foi possível conectar ao servidor");
+    } finally {
+      setLoaded(true);
+    }
   }
 
   useEffect(() => {
@@ -43,15 +54,25 @@ export default function Home() {
     e.preventDefault();
     if (!term.trim() || !translation.trim()) return;
     setLoading(true);
-    await fetch("/api/words", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ term, translation }),
-    });
-    setTerm("");
-    setTranslation("");
-    setLoading(false);
-    loadWords();
+    try {
+      const res = await fetch("/api/words", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ term, translation }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Erro ao adicionar palavra");
+        return;
+      }
+      setTerm("");
+      setTranslation("");
+      await loadWords();
+    } catch {
+      setError("Não foi possível conectar ao servidor");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -59,6 +80,17 @@ export default function Home() {
       <Header active="home" />
 
       <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
+        {error && (
+          <div className="mb-5 rounded-2xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-5 py-4">
+            <p className="font-medium text-red-700 dark:text-red-300">
+              Algo deu errado
+            </p>
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+              {error}
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-3 gap-3">
           <StatCard label="Palavras" value={words.length} />
           <StatCard label="Para revisar" value={dueCount} accent="amber" />

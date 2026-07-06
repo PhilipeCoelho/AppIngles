@@ -41,6 +41,7 @@ export default function ReviewPage() {
   const [correcting, setCorrecting] = useState(false);
   const [grading, setGrading] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   useEffect(() => {
@@ -57,10 +58,22 @@ export default function ReviewPage() {
     setLoading(true);
     setSpokenText("");
     setCorrection(null);
-    const res = await fetch("/api/review/next");
-    const data = await res.json();
-    setCard(data);
-    setLoading(false);
+    setError(null);
+    try {
+      const res = await fetch("/api/review/next");
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Erro ao carregar a próxima revisão");
+        setCard(null);
+        return;
+      }
+      setCard(data);
+    } catch {
+      setError("Não foi possível conectar ao servidor");
+      setCard(null);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function speakPhrase() {
@@ -148,7 +161,24 @@ export default function ReviewPage() {
           </div>
         )}
 
-        {!loading && card?.done && (
+        {!loading && error && (
+          <div className="mt-6 rounded-2xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-6 py-6">
+            <p className="font-medium text-red-700 dark:text-red-300">
+              Não deu para carregar a revisão
+            </p>
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+              {error}
+            </p>
+            <button
+              onClick={loadNext}
+              className="mt-4 rounded-full bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
+            >
+              Tentar de novo
+            </button>
+          </div>
+        )}
+
+        {!loading && !error && card?.done && (
           <div className="mt-6 rounded-2xl border border-dashed border-neutral-300 dark:border-neutral-800 px-6 py-14 text-center">
             <p className="text-3xl">✅</p>
             <p className="mt-3 font-medium text-neutral-900 dark:text-neutral-50">

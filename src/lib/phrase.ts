@@ -1,6 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-const client = new Anthropic();
+let client: Anthropic | null = null;
+function getClient(): Anthropic {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error(
+      "ANTHROPIC_API_KEY não configurada nas variáveis de ambiente"
+    );
+  }
+  if (!client) client = new Anthropic();
+  return client;
+}
 
 export async function generatePhrase(
   term: string,
@@ -14,7 +23,7 @@ export async function generatePhrase(
           .join("\n")}`
       : "Nenhuma frase anterior ainda.";
 
-  const message = await client.messages.create({
+  const message = await getClient().messages.create({
     model: "claude-sonnet-5",
     max_tokens: 100,
     messages: [
