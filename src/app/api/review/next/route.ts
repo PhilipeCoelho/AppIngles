@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { db, withSchema } from "@/lib/db";
-import { generatePhrase } from "@/lib/phrase";
 
+// Phase 1: review the word itself. Phase 2 will bring back AI-generated
+// sentences (see lib/phrase.ts and phrase_history) once word review is solid.
 export async function GET() {
   try {
     await withSchema();
@@ -21,29 +22,11 @@ export async function GET() {
       return NextResponse.json({ done: true });
     }
 
-    const historyResult = await db.execute({
-      sql: "SELECT phrase FROM phrase_history WHERE word_id = ? ORDER BY created_at DESC LIMIT 10",
-      args: [card.word_id as number],
-    });
-    const previousPhrases = historyResult.rows.map((r) => r.phrase as string);
-
-    const phrase = await generatePhrase(
-      card.term as string,
-      card.translation as string,
-      previousPhrases
-    );
-
-    await db.execute({
-      sql: "INSERT INTO phrase_history (word_id, phrase) VALUES (?, ?)",
-      args: [card.word_id as number, phrase],
-    });
-
     return NextResponse.json({
       done: false,
       cardId: card.card_id,
       term: card.term,
       translation: card.translation,
-      phrase,
       repetitions: card.repetitions,
     });
   } catch (err) {

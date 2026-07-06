@@ -9,14 +9,6 @@ interface ReviewCard {
   cardId?: number;
   term?: string;
   translation?: string;
-  phrase?: string;
-}
-
-interface CorrectionResult {
-  correct: boolean;
-  feedback: string;
-  mistakes: { word: string; translation: string }[];
-  requeued: string[];
 }
 
 // SpeechRecognition isn't in the standard DOM lib types yet.
@@ -37,8 +29,6 @@ export default function ReviewPage() {
   const [loading, setLoading] = useState(true);
   const [recording, setRecording] = useState(false);
   const [spokenText, setSpokenText] = useState("");
-  const [correction, setCorrection] = useState<CorrectionResult | null>(null);
-  const [correcting, setCorrecting] = useState(false);
   const [grading, setGrading] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +47,6 @@ export default function ReviewPage() {
   async function loadNext() {
     setLoading(true);
     setSpokenText("");
-    setCorrection(null);
     setError(null);
     try {
       const res = await fetch("/api/review/next");
@@ -76,11 +65,12 @@ export default function ReviewPage() {
     }
   }
 
-  function speakPhrase() {
-    if (!card?.phrase) return;
-    const utterance = new SpeechSynthesisUtterance(card.phrase);
+  function speakWord() {
+    if (!card?.term) return;
+    const utterance = new SpeechSynthesisUtterance(card.term);
     utterance.lang = "en-US";
-    utterance.rate = 0.9;
+    utterance.rate = 0.85;
+    utterance.volume = 1;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   }
@@ -105,12 +95,12 @@ export default function ReviewPage() {
       const transcript = event.results[0][0].transcript as string;
       setSpokenText(transcript);
       setRecording(false);
-      runCorrection(transcript);
     };
     recognition.onerror = () => setRecording(false);
     recognition.onend = () => setRecording(false);
 
     recognitionRef.current = recognition;
+    setSpokenText("");
     setRecording(true);
     recognition.start();
   }
@@ -118,23 +108,6 @@ export default function ReviewPage() {
   function stopRecording() {
     recognitionRef.current?.stop();
     setRecording(false);
-  }
-
-  async function runCorrection(transcript: string) {
-    if (!card?.phrase || !card?.term) return;
-    setCorrecting(true);
-    const res = await fetch("/api/review/correct", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        phrase: card.phrase,
-        spokenText: transcript,
-        term: card.term,
-      }),
-    });
-    const data = await res.json();
-    setCorrection(data);
-    setCorrecting(false);
   }
 
   async function grade(quality: number) {
@@ -197,20 +170,18 @@ export default function ReviewPage() {
           </div>
         )}
 
-        {!loading && !card?.done && card && (
+        {!loading && !error && !card?.done && card && (
           <div className="flex flex-col gap-5">
-            <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-sm">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950 px-2.5 py-1 text-xs font-medium text-indigo-700 dark:text-indigo-300">
-                {card.term} · {card.translation}
-              </span>
-              <p className="mt-4 text-2xl font-medium leading-snug text-neutral-900 dark:text-neutral-50">
-                {card.phrase}
+            <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-8 text-center shadow-sm">
+              <p className="text-sm text-neutral-500">{card.translation}</p>
+              <p className="mt-3 text-4xl font-semibold text-neutral-900 dark:text-neutral-50">
+                {card.term}
               </p>
               <button
-                onClick={speakPhrase}
-                className="mt-5 inline-flex items-center gap-2 rounded-full border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-900 dark:text-neutral-50 transition hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                onClick={speakWord}
+                className="mt-6 inline-flex items-center gap-2 rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500"
               >
-                🔊 Ouvir frase
+                🔊 Ouvir a palavra
               </button>
             </div>
 
@@ -224,11 +195,10 @@ export default function ReviewPage() {
             {speechSupported && (
               <button
                 onClick={recording ? stopRecording : startRecording}
-                disabled={correcting}
-                className={`inline-flex w-fit items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-white transition disabled:opacity-40 ${
+                className={`inline-flex w-fit items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-white transition ${
                   recording
                     ? "bg-red-600 hover:bg-red-500"
-                    : "bg-indigo-600 hover:bg-indigo-500"
+                    : "bg-neutral-900 dark:bg-neutral-700 hover:opacity-90"
                 }`}
               >
                 {recording ? "⏹ Parar gravação" : "🎙 Repetir em voz alta"}
@@ -239,31 +209,6 @@ export default function ReviewPage() {
               <p className="text-sm text-neutral-600 dark:text-neutral-400">
                 Você disse: <em>&ldquo;{spokenText}&rdquo;</em>
               </p>
-            )}
-
-            {correcting && (
-              <p className="text-sm text-neutral-500">Corrigindo...</p>
-            )}
-
-            {correction && (
-              <div
-                className={`rounded-xl border p-4 text-sm ${
-                  correction.correct
-                    ? "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950"
-                    : "border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950"
-                }`}
-              >
-                <p className="text-neutral-900 dark:text-neutral-50">
-                  {correction.correct ? "✅ " : "✏️ "}
-                  {correction.feedback}
-                </p>
-                {correction.requeued.length > 0 && (
-                  <p className="mt-2 text-neutral-600 dark:text-neutral-400">
-                    Voltaram para o aprendizado:{" "}
-                    <strong>{correction.requeued.join(", ")}</strong>
-                  </p>
-                )}
-              </div>
             )}
 
             <div className="mt-2 border-t border-neutral-200 dark:border-neutral-800 pt-5">
