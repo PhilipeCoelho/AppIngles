@@ -24,11 +24,33 @@ interface SpeechRecognitionLike extends EventTarget {
   onend: (() => void) | null;
 }
 
+// Strips punctuation/case so STT quirks ("Water." vs "water") don't count as mismatches.
+function normalizeWord(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function isMatch(spoken: string, term: string): boolean {
+  const normSpoken = normalizeWord(spoken);
+  const normTerm = normalizeWord(term);
+  if (!normSpoken || !normTerm) return false;
+  if (normSpoken === normTerm) return true;
+  // STT sometimes prepends/appends stray words ("the water") — accept if
+  // the target word appears as a whole word in what was heard.
+  return normSpoken.split(" ").includes(normTerm);
+}
+
 export default function ReviewPage() {
   const [card, setCard] = useState<ReviewCard | null>(null);
   const [loading, setLoading] = useState(true);
   const [recording, setRecording] = useState(false);
   const [spokenText, setSpokenText] = useState("");
+  const [matchState, setMatchState] = useState<"idle" | "correct" | "incorrect">(
+    "idle"
+  );
   const [grading, setGrading] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +69,7 @@ export default function ReviewPage() {
   async function loadNext() {
     setLoading(true);
     setSpokenText("");
+    setMatchState("idle");
     setError(null);
     try {
       const res = await fetch("/api/review/next");
@@ -94,6 +117,7 @@ export default function ReviewPage() {
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript as string;
       setSpokenText(transcript);
+      setMatchState(isMatch(transcript, card?.term ?? "") ? "correct" : "incorrect");
       setRecording(false);
     };
     recognition.onerror = () => setRecording(false);
@@ -101,6 +125,7 @@ export default function ReviewPage() {
 
     recognitionRef.current = recognition;
     setSpokenText("");
+    setMatchState("idle");
     setRecording(true);
     recognition.start();
   }
@@ -205,16 +230,43 @@ export default function ReviewPage() {
               </button>
             )}
 
-            {spokenText && (
-              <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                Você disse: <em>&ldquo;{spokenText}&rdquo;</em>
-              </p>
+            {matchState === "incorrect" && (
+              <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-4 py-3">
+                <p className="text-sm font-medium text-red-700 dark:text-red-300">
+                  ❌ Não reconhecemos isso como &ldquo;{card.term}&rdquo;
+                </p>
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                  Você disse: <em>&ldquo;{spokenText}&rdquo;</em>. Ouça de novo
+                  e repita.
+                </p>
+                <button
+                  onClick={startRecording}
+                  className="mt-3 rounded-full bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
+                >
+                  🎙 Tentar de novo
+                </button>
+              </div>
+            )}
+
+            {matchState === "correct" && (
+              <div className="rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950 px-4 py-3">
+                <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                  ✅ Reconhecemos certinho: &ldquo;{spokenText}&rdquo;
+                </p>
+              </div>
             )}
 
             <div className="mt-2 border-t border-neutral-200 dark:border-neutral-800 pt-5">
               <p className="mb-3 text-sm font-medium text-neutral-700 dark:text-neutral-300">
                 Como foi com &ldquo;{card.term}&rdquo;?
               </p>
+              {matchState !== "correct" && (
+                <p className="mb-2 text-xs text-neutral-500">
+                  Repita a palavra corretamente para liberar &ldquo;Foi
+                  difícil&rdquo; e &ldquo;Sabia bem&rdquo;. Se realmente não
+                  souber, pode marcar &ldquo;Não sabia&rdquo; direto.
+                </p>
+              )}
               <div className="flex gap-2">
                 <button
                   disabled={grading}
@@ -224,14 +276,14 @@ export default function ReviewPage() {
                   Não sabia
                 </button>
                 <button
-                  disabled={grading}
+                  disabled={grading || matchState !== "correct"}
                   onClick={() => grade(3)}
                   className="flex-1 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 px-4 py-2.5 text-sm font-medium transition hover:bg-amber-100 dark:hover:bg-amber-900 disabled:opacity-40"
                 >
                   Foi difícil
                 </button>
                 <button
-                  disabled={grading}
+                  disabled={grading || matchState !== "correct"}
                   onClick={() => grade(5)}
                   className="flex-1 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 px-4 py-2.5 text-sm font-medium transition hover:bg-emerald-100 dark:hover:bg-emerald-900 disabled:opacity-40"
                 >
