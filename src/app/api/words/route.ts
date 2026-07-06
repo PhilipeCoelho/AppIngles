@@ -35,6 +35,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const existing = await db.execute({
+      sql: "SELECT id FROM words WHERE term = ? COLLATE NOCASE",
+      args: [term],
+    });
+    if (existing.rows[0]) {
+      return NextResponse.json(
+        { error: `"${term}" já está cadastrada` },
+        { status: 409 }
+      );
+    }
+
     const insertResult = await db.execute({
       sql: "INSERT INTO words (term, translation) VALUES (?, ?)",
       args: [term, translation],

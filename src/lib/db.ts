@@ -40,6 +40,8 @@ async function ensureSchema() {
         phrase TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_words_term_unique
+        ON words (term COLLATE NOCASE)`,
     ],
     "write"
   );
